@@ -1,20 +1,23 @@
-name: Deploy backend
+name: Deploy Backend
 
 on:
   push:
     branches:
       - main
 
-  concurrency:
-    group: "deploy-backend-main"
-    cancel-in-progress: true
+concurrency:
+  group: deploy-backend-main
+  cancel-in-progress: true
 
-  jobs:
-    deploy:
-      runs-on: ubuntu-latest
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-      steps:
-        -name: deploy backend to EC2
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy backend to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -23,15 +26,30 @@ on:
         run: |
           set -e
 
+          echo "Setting up SSH..."
           mkdir -p ~/.ssh
           echo "$EC2_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p $EC2_PORT -H $EC2_HOST >> ~/.ssh/known_hosts
 
+          echo "Deploying backend..."
+
           ssh -i ~/.ssh/deploy_key -p $EC2_PORT $EC2_USER@$EC2_HOST << 'EOF'
-            cd /home/ubuntu/freelancer-dashboard
+            set -e
+
+            cd /home/ubuntu/freelancer-backend
+
+            echo "Pull latest code..."
             git pull origin main
+
+            echo "Install dependencies..."
             npm install
+
+            echo "Restart backend..."
             pm2 restart backend || pm2 start src/server.js --name backend
+
+            echo "Save PM2 process..."
             pm2 save
+
+            echo "Backend deployed successfully!"
           EOF
